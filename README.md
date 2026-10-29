@@ -202,7 +202,7 @@ This capstone brings together Python modules, exception handling, file processin
 
 ## 👤 Author
 
-**Shaik Asif** — student capstone project.
+**Shaik Asif** — student mini project.
 
 If you find a problem or have a suggestion, open an issue or submit a pull request.
 

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-heading mapping-heading">
+  <p class="eyebrow">AUTOMATIC COLUMN DETECTION</p>
+  <h1>Confirm your <em>columns.</em></h1>
+  <p class="muted">We found {{ "{:,}".format(row_count) }} rows and {{ column_count }} columns in <strong>{{ filename }}</strong>. Some sales fields could not be identified confidently, so choose the correct columns below.</p>
+</section>
+<section class="card mapping-card">
+  <form action="{{ url_for('map_columns') }}" method="post" class="mapping-form">
+    <input type="hidden" name="token" value="{{ token }}">
+    <input type="hidden" name="filename" value="{{ filename }}">
+    <div class="mapping-grid">
+      <label>Date column <select name="sale_date" required><option value="">Select date column…</option>{% for column in columns %}<option value="{{ column }}" {% if mapping.sale_date == column %}selected{% endif %}>{{ column }}</option>{% endfor %}</select></label>
+      <label>Quantity column <select name="quantity" required><option value="">Select quantity column…</option>{% for column in columns %}<option value="{{ column }}" {% if mapping.quantity == column %}selected{% endif %}>{{ column }}</option>{% endfor %}</select></label>
+      <label>Price / sales column <select name="price_column" required><option value="">Select price or amount…</option>{% for column in columns %}<option value="{{ column }}" {% if mapping.price_column == column %}selected{% endif %}>{{ column }}</option>{% endfor %}</select></label>
+      <label>This column contains<select name="price_mode"><option value="unit_price" {% if mapping.price_mode != 'sales_amount' %}selected{% endif %}>Price per unit</option><option value="sales_amount" {% if mapping.price_mode == 'sales_amount' %}selected{% endif %}>Total sales amount for the row</option></select></label>
+      <label>Region / location (optional)<select name="region"><option value="">Not available</option>{% for column in columns %}<option value="{{ column }}" {% if mapping.region == column %}selected{% endif %}>{{ column }}</option>{% endfor %}</select></label>
+      <label>Product name (optional)<select name="product_name"><option value="">Not available</option>{% for column in columns %}<option value="{{ column }}" {% if mapping.product_name == column %}selected{% endif %}>{{ column }}</option>{% endfor %}</select></label>
+      <label>Product category (optional)<select name="category"><option value="">Not available</option>{% for column in columns %}<option value="{{ column }}" {% if mapping.category == column %}selected{% endif %}>{{ column }}</option>{% endfor %}</select></label>
+    </div>
+    <p class="muted small-note">If you select a total-sales column, unit price is calculated as total sales divided by quantity. Each quantity must be a positive whole number.</p>
+    <div class="button-row"><button class="button" type="submit">Validate and import →</button><a class="button button-secondary" href="{{ url_for('dashboard') }}">Cancel</a></div>
+  </form>
+</section>
+<section class="card mapping-preview">
+  <div class="section-title"><div><p class="eyebrow">FILE PREVIEW</p><h2>First rows detected</h2></div><span class="tag">{{ column_count }} columns</span></div>
+  <div class="table-wrap"><table><thead><tr>{% for column in columns %}<th>{{ column }}</th>{% endfor %}</tr></thead><tbody>{% for row in preview_rows %}<tr>{% for column in columns %}<td>{{ row[column] }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
+</section>
+{% endblock %}

@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-heading analysis-heading">
+  <p class="eyebrow">ANALYSIS</p>
+  <h1>Your sales, <em>your view.</em></h1>
+  {% if detail.empty %}
+    <p class="muted">Upload a sales file to start exploring your data.</p>
+  {% else %}
+    <p class="muted">{{ "{:,}".format(summary.rows) }} imported rows · {{ summary.date_min }} to {{ summary.date_max }}. Change any option to update the page automatically.</p>
+  {% endif %}
+  {% if last_upload %}<p class="muted small-note last-upload-note">Last file: <strong>{{ last_upload.filename }}</strong> · detected {{ "{:,}".format(last_upload.source_rows) }} rows and {{ last_upload.source_columns }} columns.</p>{% endif %}
+</section>
+
+{% if not detail.empty %}
+<form class="card selection-panel" method="get" action="{{ url_for('analysis') }}" id="analysis-options" data-auto-submit>
+  <input type="hidden" name="initialized" value="1">
+  <div class="selection-block">
+    <div class="section-title"><div><p class="eyebrow">GRAPH</p><h2>Chart settings</h2></div><span class="tag">Updates automatically</span></div>
+    <label class="selection-checkbox"><input type="checkbox" name="show_chart" value="1" {% if show_chart %}checked{% endif %}> Show graph</label>
+    <div class="selection-grid">
+      <label>Graph type<select name="graph_type" id="graph-type"><option value="line" {% if graph_type=='line' %}selected{% endif %}>Line</option><option value="bar" {% if graph_type=='bar' %}selected{% endif %}>Bar</option><option value="area" {% if graph_type=='area' %}selected{% endif %}>Area</option><option value="scatter" {% if graph_type=='scatter' %}selected{% endif %}>Scatter</option><option value="pie" {% if graph_type=='pie' %}selected{% endif %}>Pie</option></select></label>
+      <label>What to compare<select name="dimension" id="graph-dimension"><option value="date" {% if dimension=='date' %}selected{% endif %}>Sales over time</option><option value="region" {% if dimension=='region' %}selected{% endif %} {% if not has_regions %}disabled{% endif %}>Region</option><option value="product" {% if dimension=='product' %}selected{% endif %} {% if not has_products %}disabled{% endif %}>Product</option><option value="category" {% if dimension=='category' %}selected{% endif %} {% if not has_categories %}disabled{% endif %}>Category</option></select></label>
+      <label>Measure<select name="measure"><option value="revenue" {% if measure=='revenue' %}selected{% endif %}>Revenue</option><option value="quantity" {% if measure=='quantity' %}selected{% endif %}>Units sold</option></select></label>
+      <label>Time interval<select name="frequency"><option value="daily" {% if frequency=='daily' %}selected{% endif %}>Daily</option><option value="monthly" {% if frequency=='monthly' %}selected{% endif %}>Monthly</option></select></label>
+    </div>
+    <p class="muted small-note">Hover over a chart to see the exact date and value. Dates are hidden under time-series graphs to keep them uncluttered. Pie charts work with region, product, or category.</p>
+  </div>
+  <div class="selection-block">
+    <div class="section-title"><div><p class="eyebrow">TABLES</p><h2>Choose extra tables</h2></div></div>
+    <div class="table-choice-grid">
+      <label class="selection-checkbox"><input type="checkbox" name="summary" value="1" {% if show_summary %}checked{% endif %}> Summary cards</label>
+      <label class="selection-checkbox"><input type="checkbox" name="table" value="daily" {% if 'daily' in selected_tables %}checked{% endif %}> Daily sales table</label>
+      <label class="selection-checkbox"><input type="checkbox" name="table" value="monthly" {% if 'monthly' in selected_tables %}checked{% endif %}> Monthly sales table</label>
+      <label class="selection-checkbox"><input type="checkbox" name="table" value="region" {% if 'region' in selected_tables %}checked{% endif %} {% if not has_regions %}disabled{% endif %}> Region breakdown</label>
+      <label class="selection-checkbox"><input type="checkbox" name="table" value="product" {% if 'product' in selected_tables %}checked{% endif %} {% if not has_products %}disabled{% endif %}> Product breakdown</label>
+      <label class="selection-checkbox"><input type="checkbox" name="table" value="category" {% if 'category' in selected_tables %}checked{% endif %} {% if not has_categories %}disabled{% endif %}> Category breakdown</label>
+    </div>
+    <p class="muted small-note">Summary cards and a graph are shown by default. Select any additional table to add it; uncheck it to remove it.</p>
+  </div>
+</form>
+
+{% if show_summary %}
+<section class="grid four summary-grid">
+  <article class="card stat"><span class="stat-label">Imported rows</span><strong>{{ "{:,}".format(summary.rows) }}</strong></article>
+  <article class="card stat"><span class="stat-label">Total revenue</span><strong>₹{{ "{:,.2f}".format(summary.total_revenue) }}</strong></article>
+  <article class="card stat"><span class="stat-label">Units sold</span><strong>{{ "{:,.0f}".format(summary.total_units) }}</strong></article>
+  <article class="card stat"><span class="stat-label">Date coverage</span><strong class="date-range-stat">{{ summary.date_min }}<br>to {{ summary.date_max }}</strong></article>
+</section>
+{% endif %}
+
+{% if show_chart and chart_spec %}
+<section class="card result-card chart-card-wide">
+  <div class="section-title"><div><p class="eyebrow">INTERACTIVE GRAPH</p><h2>{{ graph_type|capitalize }} · {{ dimension|capitalize }} · {{ measure|capitalize }}</h2></div><a class="download-link" href="{{ url_for('analysis_chart', dimension=dimension, graph_type=graph_type, measure=measure, frequency=frequency) }}">Download PNG ↓</a></div>
+  <div class="plotly-chart" id="analysis-chart" data-fallback-url="{{ url_for('analysis_chart', dimension=dimension, graph_type=graph_type, measure=measure, frequency=frequency) }}" role="img" aria-label="Interactive {{ graph_type }} chart showing {{ measure }} by {{ dimension }}"></div>
+  <p class="muted small-note chart-help">Hover for details · Drag to zoom · Double-click the graph to reset.</p>
+</section>
+{% endif %}
+
+{% if 'daily' in selected_tables %}
+<section class="card result-card"><h2>Daily sales</h2><p class="muted">Most recent days first. The table starts with 5 rows; use Show more to expand it.</p><div class="table-wrap"><table data-progressive="true"><thead><tr><th>Date</th><th>Revenue</th><th>Units sold</th><th>Transactions</th></tr></thead><tbody>{% for row in tables.daily.itertuples() %}<tr><td>{{ row.period.strftime('%Y-%m-%d') }}</td><td>₹{{ '{:,.2f}'.format(row.revenue) }}</td><td>{{ '{:,.0f}'.format(row.quantity) }}</td><td>{{ row.transactions }}</td></tr>{% endfor %}</tbody></table></div></section>
+{% endif %}
+{% if 'monthly' in selected_tables %}
+<section class="card result-card"><h2>Monthly sales</h2><p class="muted">Most recent months first. The table starts with 5 rows; use Show more to expand it.</p><div class="table-wrap"><table data-progressive="true"><thead><tr><th>Month</th><th>Revenue</th><th>Units sold</th><th>Transactions</th></tr></thead><tbody>{% for row in tables.monthly.itertuples() %}<tr><td>{{ row.period.strftime('%B %Y') }}</td><td>₹{{ '{:,.2f}'.format(row.revenue) }}</td><td>{{ '{:,.0f}'.format(row.quantity) }}</td><td>{{ row.transactions }}</td></tr>{% endfor %}</tbody></table></div></section>
+{% endif %}
+{% for key, title in [('region','Region breakdown'), ('product','Product breakdown'), ('category','Category breakdown')] %}
+  {% if key in selected_tables %}
+  <section class="card result-card"><h2>{{ title }}</h2><p class="muted">Ranked by total revenue, highest first.</p><div class="table-wrap"><table data-progressive="true"><thead><tr><th>{{ title.split(' ')[0] }}</th><th>Revenue</th><th>Units sold</th><th>Transactions</th></tr></thead><tbody>{% for row in tables[key].itertuples() %}<tr><td>{% if key == 'region' %}{{ row.region }}{% elif key == 'product' %}{{ row.product_name }}{% else %}{{ row.category }}{% endif %}</td><td>₹{{ '{:,.2f}'.format(row.revenue) }}</td><td>{{ '{:,.0f}'.format(row.quantity) }}</td><td>{{ row.transactions }}</td></tr>{% endfor %}</tbody></table></div></section>
+  {% endif %}
+{% endfor %}
+{% if not show_summary and not show_chart and not selected_tables %}<section class="card empty"><h2>All views are hidden</h2><p>Turn on the graph, summary cards, or a table above to display something.</p></section>{% endif %}
+{% else %}
+<section class="empty card"><span class="empty-icon">⌁</span><h2>No sales data loaded</h2><p>Upload a CSV, TSV, TXT, DAT, XLSX, or XLSM file. The app detects rows and columns before showing analysis options.</p><a class="button" href="{{ url_for('dashboard') }}">Go to upload →</a></section>
+{% endif %}
+
+<script>
+(() => {
+  const spec = {{ chart_spec|tojson }};
+  const form = document.getElementById("analysis-options");
+  const dimension = document.getElementById("graph-dimension");
+  const type = document.getElementById("graph-type");
+  const syncPie = () => {
+    if (!dimension || !type) return;
+    const pie = type.querySelector('option[value="pie"]');
+    pie.disabled = dimension.value === "date";
+    if (pie.disabled && type.value === "pie") type.value = "line";
+  };
+  if (dimension && type) {
+    dimension.addEventListener("change", syncPie);
+    syncPie();
+  }
+  if (form) {
+    let submitTimer;
+    form.addEventListener("change", () => {
+      window.clearTimeout(submitTimer);
+      try { sessionStorage.setItem("salescast-scroll-y", String(window.scrollY)); } catch (_) {}
+      submitTimer = window.setTimeout(() => form.requestSubmit(), 120);
+    });
+  }
+  if (spec) {
+    document.addEventListener("DOMContentLoaded", () => {
+      if (window.SalesCastPlotly) window.SalesCastPlotly.render("analysis-chart", spec);
+      try {
+        const savedY = sessionStorage.getItem("salescast-scroll-y");
+        if (savedY !== null) { sessionStorage.removeItem("salescast-scroll-y"); window.scrollTo(0, Number(savedY)); }
+      } catch (_) {}
+    }, { once: true });
+  }
+})();
+</script>
+{% endblock %}

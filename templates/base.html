@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SalesCast | Sales Forecasting</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='logo.svg') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script>
+    (() => {
+      try {
+        const saved = localStorage.getItem("salescast-theme");
+        document.documentElement.setAttribute("data-theme", saved === "dark" ? "dark" : "light");
+      } catch (_) { document.documentElement.setAttribute("data-theme", "light"); }
+    })();
+  </script>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <header class="topbar">
+    <a class="brand-lockup" href="{{ url_for('dashboard') }}" aria-label="SalesCast upload">
+      <img class="brand-mark" src="{{ url_for('static', filename='logo.svg') }}" alt="">
+      <span><span class="brand">SalesCast</span><span class="tagline">Predictive Sales Analytics</span></span>
+    </a>
+    <button class="menu-toggle" type="button" id="menu-toggle" aria-label="Open navigation menu" aria-expanded="false" aria-controls="primary-navigation">☰</button>
+    <nav id="primary-navigation" aria-label="Primary navigation">
+      <a class="{% if request.endpoint == 'dashboard' or request.endpoint in ['import_data', 'map_columns'] %}active{% endif %}" href="{{ url_for('dashboard') }}">Upload</a>
+      <a class="{% if request.endpoint in ['analysis', 'analysis_chart'] %}active{% endif %}" href="{{ url_for('analysis') }}">Analysis</a>
+      <a class="{% if request.endpoint in ['forecast', 'ai_insights', 'ai_forecast_api', 'chart', 'download_report'] %}active{% endif %}" href="{{ url_for('forecast') }}">Forecast</a>
+      <button class="theme-toggle" type="button" id="theme-toggle" aria-label="Switch color theme">☾ Dark mode</button>
+      <form class="reset-nav-form" action="{{ url_for('reset_data') }}" method="post" onsubmit="return confirm('Reset all imported sales data and forecasts? This cannot be undone.');">
+        <button class="reset-nav-button" type="submit">Reset data</button>
+      </form>
+    </nav>
+  </header>
+  <main class="container" id="main-content" tabindex="-1">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}<div class="flash {{ category }}" role="{{ 'alert' if category == 'error' else 'status' }}" aria-live="{{ 'assertive' if category == 'error' else 'polite' }}">{{ message }}</div>{% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+  <script>
+    (() => {
+      const root = document.documentElement;
+      const menuToggle = document.getElementById("menu-toggle");
+      const navigation = document.getElementById("primary-navigation");
+      const themeToggle = document.getElementById("theme-toggle");
+      const theme = () => root.getAttribute("data-theme") === "dark" ? "dark" : "light";
+      const setTheme = (value) => {
+        root.setAttribute("data-theme", value);
+        if (themeToggle) themeToggle.textContent = value === "dark" ? "☀ Light mode" : "☾ Dark mode";
+        try { localStorage.setItem("salescast-theme", value); } catch (_) {}
+        window.dispatchEvent(new CustomEvent("salescast-theme-change"));
+      };
+      if (themeToggle) {
+        setTheme(theme());
+        themeToggle.addEventListener("click", () => setTheme(theme() === "dark" ? "light" : "dark"));
+      }
+      if (menuToggle && navigation) {
+        menuToggle.addEventListener("click", () => {
+          const open = menuToggle.getAttribute("aria-expanded") === "true";
+          menuToggle.setAttribute("aria-expanded", String(!open));
+          menuToggle.setAttribute("aria-label", open ? "Open navigation menu" : "Close navigation menu");
+          navigation.classList.toggle("is-open", !open);
+        });
+      }
+      window.SalesCastPlotly = {
+        render: async (id, spec) => {
+          const target = document.getElementById(id);
+          if (!target || !spec) return;
+          target._salescastSpec = spec;
+          if (!window.Plotly) {
+            const fallbackUrl = target.dataset.fallbackUrl;
+            if (fallbackUrl) {
+              const image = document.createElement("img");
+              image.className = "chart chart-fallback";
+              image.src = fallbackUrl;
+              image.alt = "Static chart fallback. Interactive chart library could not be loaded.";
+              target.replaceChildren(image);
+            } else {
+              target.textContent = "Interactive chart library could not be loaded. Check your internet connection and refresh.";
+            }
+            return Promise.resolve();
+          }
+          const styles = getComputedStyle(root);
+          const ink = styles.getPropertyValue("--ink").trim() || "#172033";
+          const muted = styles.getPropertyValue("--muted").trim() || "#667085";
+          const line = styles.getPropertyValue("--line").trim() || "#e5e7eb";
+          const layout = JSON.parse(JSON.stringify(spec.layout || {}));
+          const data = JSON.parse(JSON.stringify(spec.data || []));
+          layout.paper_bgcolor = "rgba(0,0,0,0)";
+          layout.plot_bgcolor = "rgba(0,0,0,0)";
+          layout.font = {...(layout.font || {}), color: ink, family: "Inter, system-ui, sans-serif"};
+          layout.xaxis = {...(layout.xaxis || {}), color: muted, linecolor: line, gridcolor: line};
+          layout.yaxis = {...(layout.yaxis || {}), color: muted, linecolor: line, gridcolor: line};
+          layout.legend = {...(layout.legend || {}), font: {...((layout.legend || {}).font || {}), color: ink}};
+          data.forEach((trace) => {
+            if (trace.name === "Actual") {
+              const actualColor = root.getAttribute("data-theme") === "dark" ? "#e2e8f0" : "#172033";
+              trace.line = {...(trace.line || {}), color: actualColor};
+              trace.marker = {...(trace.marker || {}), color: actualColor};
+            }
+          });
+          return window.Plotly.newPlot(target, data, layout, spec.config || {responsive: true, displaylogo: false});
+        }
+      };
+      const setupProgressiveTable = (table) => {
+        if (!table) return;
+        const oldButton = table.parentElement.nextElementSibling;
+        if (oldButton && oldButton.classList.contains("table-more")) oldButton.remove();
+        const rows = Array.from(table.querySelectorAll("tbody tr"));
+        rows.forEach((row, index) => { row.hidden = index >= 5; });
+        if (rows.length <= 5) return;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "table-more";
+        let expanded = false;
+        const update = () => {
+          rows.forEach((row, index) => { row.hidden = !expanded && index >= 5; });
+          button.textContent = expanded ? "Show less ↑" : `Show more (${rows.length - 5}) ↓`;
+          button.setAttribute("aria-expanded", String(expanded));
+        };
+        button.addEventListener("click", () => { expanded = !expanded; update(); });
+        table.parentElement.insertAdjacentElement("afterend", button);
+        update();
+      };
+      window.SalesCastTables = {
+        refresh: (target) => {
+          if (target) setupProgressiveTable(target);
+          else document.querySelectorAll("table[data-progressive='true']").forEach(setupProgressiveTable);
+        }
+      };
+      document.querySelectorAll(".flash").forEach((flash) => {
+        window.setTimeout(() => {
+          flash.classList.add("is-dismissing");
+          window.setTimeout(() => flash.remove(), 250);
+        }, 5000);
+      });
+      window.addEventListener("salescast-theme-change", () => {
+        document.querySelectorAll(".plotly-chart").forEach((chart) => {
+          if (chart._salescastSpec && window.SalesCastPlotly) window.SalesCastPlotly.render(chart.id, chart._salescastSpec);
+        });
+      });
+      document.addEventListener("DOMContentLoaded", () => window.SalesCastTables.refresh(), {once: true});
+    })();
+  </script>
+</body>
+</html>

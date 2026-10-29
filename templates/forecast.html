@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-heading forecast-heading">
+  <p class="eyebrow">FORECAST REPORT</p>
+  <h1>Forecast the future,<br><em>understand the risk.</em></h1>
+  <p class="muted">Training observations: {{ report.training_rows }} · Chronological holdout · No random shuffling</p>
+  <div class="report-toolbar">
+    <form action="{{ url_for('forecast') }}" method="get" class="horizon-form" id="forecast-horizon-form">
+      <label for="horizon">Forecast horizon</label>
+      <input id="horizon" name="horizon" type="number" min="1" max="30" value="{{ report.horizon }}" required>
+      <span>days</span><span class="muted small-note">Changing this updates the report automatically.</span>
+    </form>
+    <div class="button-row report-actions">
+      <a class="button button-secondary" href="{{ url_for('download_report', horizon=report.horizon) }}">Download CSV ↓</a>
+      <button class="button" type="button" onclick="window.print()">Print / Save PDF ↗</button>
+    </div>
+  </div>
+</section>
+
+<section class="grid two forecast-overview">
+  <article class="card">
+    <h2>Chronological holdout error</h2>
+    <p class="muted">These scores use later observations withheld from training. Lower is better.</p>
+    <div class="table-wrap"><table><thead><tr><th>Method</th><th>MAE</th><th>RMSE</th></tr></thead><tbody>
+      {% for row in report.metrics.itertuples() %}<tr><td>{{ row.method }}</td><td>₹{{ "%.2f"|format(row.mae) }}</td><td>₹{{ "%.2f"|format(row.rmse) }}</td></tr>{% endfor %}
+    </tbody></table></div>
+  </article>
+  <article class="card">
+    <h2>How the baselines work</h2>
+    <p><strong>7-day moving average</strong> smooths recent sales, but reacts slowly to abrupt changes.</p>
+    <p><strong>Linear regression</strong> follows a simple overall direction, but can miss seasonality and abrupt changes.</p>
+    <p class="muted small-note">MAE is average absolute error. RMSE penalizes larger misses more heavily.</p>
+  </article>
+</section>
+
+<section class="card chart-card-wide forecast-chart-card">
+  <div class="section-title"><div><p class="eyebrow">MODEL EVALUATION</p><h2>Actual versus predicted</h2><p class="muted">Chronological holdout only. Hover for the date and values.</p></div><a class="download-link" href="{{ url_for('chart', chart_name='trend', horizon=report.horizon) }}">Download PNG ↓</a></div>
+  <div class="plotly-chart" id="holdout-chart" data-fallback-url="{{ url_for('chart', chart_name='trend', horizon=report.horizon) }}" role="img" aria-label="Interactive actual versus predicted sales chart"></div>
+  <p class="muted small-note chart-help">Dates appear on hover instead of below the graph. Drag to zoom; double-click to reset.</p>
+</section>
+
+<section class="card chart-card-wide forecast-chart-card">
+  <div class="section-title"><div><p class="eyebrow">FUTURE OUTLOOK</p><h2>AI-assisted and baseline forecasts</h2><p class="muted">Next {{ report.horizon }} days. Shading indicates an approximate baseline range, not a guarantee.</p></div><a class="download-link" href="{{ url_for('chart', chart_name='forecast', horizon=report.horizon) }}">Download PNG ↓</a></div>
+  <div class="plotly-chart" id="future-chart" data-fallback-url="{{ url_for('chart', chart_name='forecast', horizon=report.horizon) }}" role="img" aria-label="Interactive future sales forecast chart"></div>
+  <p class="muted small-note chart-help">Use the legend to hide or show models. Hover to see the exact future date and prediction.</p>
+</section>
+
+<section class="card ai-card" id="ai-forecast-panel">
+  <div class="section-title ai-heading">
+    <div><p class="eyebrow">AI FORECAST</p><h2>AI analysis and predictions</h2><p class="muted">When configured, the OpenAI API analyzes aggregated daily history, baseline scores, and produces a value for each forecast date.</p></div>
+    <span class="source-chip" id="ai-source">{% if ai_api_configured %}Connecting to API{% else %}Local baseline{% endif %}</span>
+  </div>
+  <p class="ai-status" id="ai-status" role="status" aria-live="polite">{% if ai_api_configured %}Analyzing sales history and generating the {{ report.horizon }}-day AI forecast…{% else %}AI API is not configured. Showing the best measured local baseline until an API key is added to .env.{% endif %}</p>
+  <p class="ai-summary" id="ai-summary">The forecast updates for the selected horizon. The AI result is advisory; baseline error metrics below remain calculated from the chronological holdout.</p>
+  <ul class="ai-insight-list" id="ai-insights"></ul>
+  <div class="ai-notice muted small-note" id="ai-notice">{% if not ai_api_configured %}Set OPENAI_API_KEY in .env and restart the server to enable API-generated forecast values.{% endif %}</div>
+  <div class="ai-method-note muted small-note" id="ai-method-note"></div>
+  <div class="table-wrap ai-forecast-table-wrap"><table id="ai-forecast-table" data-progressive="true"><thead><tr><th>Date</th><th>AI / fallback predicted revenue</th></tr></thead><tbody id="ai-forecast-rows">
+  {% if ai_api_configured %}
+    <tr><td colspan="2" class="muted">Waiting for the AI API response…</td></tr>
+  {% else %}
+    {% set best_method = report.metrics.sort_values('mae').iloc[0]['method'] %}
+    {% for row in report.forecast[report.forecast['method'] == best_method].sort_values('period').itertuples() %}<tr><td>{{ row.period.strftime('%Y-%m-%d') }}</td><td>₹{{ '%.2f'|format(row.predicted) }}</td></tr>{% endfor %}
+  {% endif %}
+  </tbody></table></div>
+</section>
+
+<section class="card">
+  <h2>Chronological holdout details</h2>
+  <p class="muted">These are actual later observations held back from training, not fabricated accuracy values. Showing the first 5 rows initially.</p>
+  <div class="table-wrap"><table data-progressive="true"><thead><tr><th>Date</th><th>Method</th><th>Actual</th><th>Predicted</th><th>Absolute error</th></tr></thead><tbody>
+    {% for row in report.holdout.sort_values(['period','method']).itertuples() %}<tr><td>{{ row.period.strftime('%Y-%m-%d') }}</td><td>{{ row.method }}</td><td>₹{{ '%.2f'|format(row.actual) }}</td><td>₹{{ '%.2f'|format(row.predicted) }}</td><td>₹{{ '%.2f'|format((row.actual - row.predicted)|abs) }}</td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+
+<section class="card">
+  <h2>Baseline forecast comparison</h2>
+  <p class="muted">Predictions from both simple methods, with approximate ranges. Showing 5 rows initially.</p>
+  <div class="table-wrap"><table data-progressive="true"><thead><tr><th>Date</th><th>Method</th><th>Forecast</th><th>Approx. range</th></tr></thead><tbody>
+    {% for row in report.forecast.sort_values(['period','method']).itertuples() %}<tr><td>{{ row.period.strftime('%Y-%m-%d') }}</td><td>{{ row.method }}</td><td>₹{{ '%.2f'|format(row.predicted) }}</td><td>₹{{ '%.2f'|format(row.lower) }} – ₹{{ '%.2f'|format(row.upper) }}</td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+
+<section class="card">
+  <h2>Monthly aggregation</h2><p class="muted">Pandas groups revenue and units by calendar month. Most recent months first.</p>
+  <div class="table-wrap"><table data-progressive="true"><thead><tr><th>Month</th><th>Revenue</th><th>Units sold</th></tr></thead><tbody>{% for row in report.monthly.iloc[::-1].itertuples() %}<tr><td>{{ row.period.strftime('%B %Y') }}</td><td>₹{{ '%.2f'|format(row.revenue) }}</td><td>{{ '%.0f'|format(row.quantity) }}</td></tr>{% endfor %}</tbody></table></div>
+</section>
+
+<section class="card"><h2>Limitations and assumptions</h2><ul>{% for item in report.limitations %}<li>{{ item }}</li>{% endfor %}<li>AI-generated predictions depend on the supplied history and may be wrong; always compare them with actual results and the chronological holdout metrics.</li></ul></section>
+
+<script>
+(() => {
+  const holdoutSpec = {{ holdout_plot|tojson }};
+  const futureSpec = {{ future_plot|tojson }};
+  const horizonInput = document.getElementById("horizon");
+  const horizonForm = document.getElementById("forecast-horizon-form");
+  let horizonTimer;
+  if (horizonInput && horizonForm) {
+    horizonInput.addEventListener("input", () => {
+      window.clearTimeout(horizonTimer);
+      horizonTimer = window.setTimeout(() => {
+        const value = Number(horizonInput.value);
+        if (Number.isFinite(value) && value >= 1 && value <= 30) horizonForm.requestSubmit();
+      }, 700);
+    });
+    horizonInput.addEventListener("change", () => {
+      const value = Number(horizonInput.value);
+      if (Number.isFinite(value)) {
+        horizonInput.value = String(Math.max(1, Math.min(30, Math.round(value))));
+        horizonForm.requestSubmit();
+      }
+    });
+  }
+
+  async function loadAIForecast() {
+    const source = document.getElementById("ai-source");
+    const status = document.getElementById("ai-status");
+    const summary = document.getElementById("ai-summary");
+    const insights = document.getElementById("ai-insights");
+    const notice = document.getElementById("ai-notice");
+    const methodNote = document.getElementById("ai-method-note");
+    const tbody = document.getElementById("ai-forecast-rows");
+    try {
+      const response = await fetch("{{ url_for('ai_forecast_api') }}?horizon=" + encodeURIComponent(horizonInput.value), { headers: {"Accept": "application/json"} });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not generate a forecast.");
+      source.textContent = result.source || "Forecast result";
+      status.textContent = result.used_api ? "AI API analysis complete. The chart now includes the AI-generated forecast." : "Using the local fallback; no AI-generated predictions were returned for this result.";
+      summary.textContent = result.summary || "Forecast result ready.";
+      insights.replaceChildren();
+      (result.insights || []).forEach((item) => { const li = document.createElement("li"); li.textContent = item; insights.appendChild(li); });
+      notice.textContent = result.notice || result.limitations_text || "AI predictions are estimates, not guarantees.";
+      methodNote.textContent = result.method_note || "";
+      tbody.replaceChildren();
+      (result.forecast || []).forEach((item) => {
+        const tr = document.createElement("tr");
+        const date = document.createElement("td"); date.textContent = item.date;
+        const value = document.createElement("td");
+        const amount = Number(item.predicted_revenue);
+        value.textContent = Number.isFinite(amount) ? "₹" + amount.toLocaleString("en-IN", {minimumFractionDigits: 2, maximumFractionDigits: 2}) : "—";
+        tr.append(date, value); tbody.appendChild(tr);
+      });
+      if (result.used_api && result.forecast && result.forecast.length) {
+        const chart = document.getElementById("future-chart");
+        if (chart && window.Plotly) {
+          const aiTrace = {
+            type: "scatter", mode: "lines+markers", name: "AI-assisted forecast",
+            x: result.forecast.map((row) => row.date), y: result.forecast.map((row) => Number(row.predicted_revenue)),
+            line: {color: "#06b6d4", width: 3, dash: "dash"}, marker: {size: 7},
+            hovertemplate: "%{x}<br>AI forecast: ₹%{y:,.2f}<extra></extra>"
+          };
+          if (chart._salescastSpec) chart._salescastSpec.data.push(aiTrace);
+          await window.Plotly.addTraces(chart, aiTrace);
+        }
+      }
+      if (window.SalesCastTables) window.SalesCastTables.refresh(document.getElementById("ai-forecast-table"));
+    } catch (error) {
+      source.textContent = "Unavailable";
+      status.textContent = "Could not load the AI forecast.";
+      notice.textContent = error && error.message ? error.message : "Check the local server and API configuration.";
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", async () => {
+    if (window.SalesCastPlotly) {
+      await Promise.all([
+        window.SalesCastPlotly.render("holdout-chart", holdoutSpec),
+        window.SalesCastPlotly.render("future-chart", futureSpec)
+      ]);
+    }
+    await loadAIForecast();
+  }, { once: true });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="upload-page">
+  <div class="upload-copy">
+    <p class="eyebrow"><span class="status-dot inline-dot"></span> SALES FORECASTING WORKSPACE</p>
+    <h1>Upload your data.<br><em>Choose what matters.</em></h1>
+    <p class="hero-lede">Import a sales table. SalesCast detects its rows, columns, and common field names, then lets you choose the analysis you want to view.</p>
+    <p class="file-types"><strong>Supported files:</strong> CSV, TSV, TXT, DAT, XLSX, XLSM</p>
+    <p class="muted small-note">Required fields: date, quantity, and unit price or total sales amount. If a column is not detected automatically, you can map it yourself.</p>
+  </div>
+  <form class="upload upload-card" action="{{ url_for('import_data') }}" method="post" enctype="multipart/form-data">
+    <div class="upload-heading"><span class="upload-icon">↥</span><div><p class="eyebrow">IMPORT DATA</p><h2>Choose a sales file</h2></div></div>
+    <label class="drop-zone" for="file" id="drop-zone">
+      <span class="file-icon">↑</span>
+      <strong>Browse files or drag one here</strong>
+      <span class="drop-hint">Your file stays in this local app</span>
+      <span class="file-name" id="file-name">No file selected</span>
+    </label>
+    <input id="file" name="file" type="file" accept=".csv,.tsv,.txt,.dat,.xlsx,.xlsm" required>
+    <button class="upload-button" type="submit"><span class="upload-label">Upload and detect columns</span><span class="upload-arrow">→</span></button>
+    <p class="upload-status" id="upload-status" aria-live="polite"></p>
+  </form>
+</section>
+
+{% if detail_rows %}
+<section class="card dataset-status">
+  <div class="section-title"><div><p class="eyebrow">CURRENT DATA</p><h2>{{ "{:,}".format(detail_rows) }} records loaded</h2><p class="muted">Open Analysis to select graphs, tables, and summaries, or Forecast to evaluate the baseline models.</p></div><span class="tag">Ready</span></div>
+  {% if last_upload %}
+  <div class="dataset-details">
+    <div><span class="stat-label">Last file</span><strong>{{ last_upload.filename }}</strong></div>
+    <div><span class="stat-label">Rows detected</span><strong>{{ "{:,}".format(last_upload.source_rows) }}</strong></div>
+    <div><span class="stat-label">Columns detected</span><strong>{{ last_upload.source_columns }}</strong></div>
+    <div><span class="stat-label">Rows added</span><strong>{{ "{:,}".format(last_upload.imported_rows) }}</strong></div>
+  </div>
+  <p class="muted small-note">Detected field mapping: date = {{ last_upload.mapping.sale_date or "not mapped" }} · quantity = {{ last_upload.mapping.quantity or "not mapped" }} · price/amount = {{ last_upload.mapping.price_column or "not mapped" }}</p>
+  {% endif %}
+  <div class="button-row"><a class="button" href="{{ url_for('analysis') }}">Open Analysis →</a>{% if has_forecast_data %}<a class="button button-secondary" href="{{ url_for('forecast') }}">Open Forecast →</a><a class="download-link" href="{{ url_for('download_report') }}">Download forecast report ↓</a>{% else %}<span class="muted small-note">Import at least six dated observations to enable forecasting.</span>{% endif %}</div>
+</section>
+{% else %}
+<section class="empty card upload-empty"><span class="empty-icon">↥</span><h2>Your insights are one upload away</h2><p>Start with <code>data/sample_sales.csv</code> or choose your own delimited text file or Excel workbook.</p></section>
+{% endif %}
+
+<div class="loading-backdrop" id="loading-backdrop" hidden aria-live="polite" aria-label="Reading sales data">
+  <div class="loading-card" role="status"><span class="loading-spinner" aria-hidden="true"></span><strong>Reading your sales data</strong><span>Detecting rows and matching columns…</span></div>
+</div>
+<script>
+(() => {
+  const input = document.getElementById("file");
+  const zone = document.getElementById("drop-zone");
+  const name = document.getElementById("file-name");
+  const form = input?.form;
+  if (!input || !zone || !form) return;
+  const setFile = () => {
+    name.textContent = input.files[0]?.name || "No file selected";
+    zone.classList.toggle("selected", Boolean(input.files.length));
+  };
+  input.addEventListener("change", setFile);
+  ["dragenter", "dragover"].forEach((eventName) => zone.addEventListener(eventName, (event) => {
+    event.preventDefault(); zone.classList.add("dragging");
+  }));
+  ["dragleave", "drop"].forEach((eventName) => zone.addEventListener(eventName, (event) => {
+    event.preventDefault(); zone.classList.remove("dragging");
+  }));
+  zone.addEventListener("drop", (event) => {
+    if (event.dataTransfer.files.length) { input.files = event.dataTransfer.files; setFile(); }
+  });
+  form.addEventListener("submit", () => {
+    const button = form.querySelector(".upload-button");
+    if (button) { button.disabled = true; button.querySelector(".upload-label").textContent = "Reading file…"; }
+    document.getElementById("loading-backdrop").hidden = false;
+  });
+})();
+</script>
+{% endblock %}

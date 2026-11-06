@@ -271,16 +271,32 @@ def create_app(database: Path | str = DATABASE) -> Flask:
     app = Flask(__name__)
     environment = os.environ.get("APP_ENV", "development").lower()
     configured_secret = os.environ.get("SECRET_KEY")
+    
     if environment == "production" and not configured_secret:
         raise RuntimeError("SECRET_KEY must be set when APP_ENV=production.")
+
     app.config.update(
-        DATABASE=Path(database),
+        DATABASE=Path(
+            os.environ.get(
+                "SALES_FORECAST_DB",
+                "/tmp/salescast.db" if os.environ.get("VERCEL") else database
+            )
+        ),
         SECRET_KEY=configured_secret or secrets.token_hex(32),
         APP_ENV=environment,
         MAX_CONTENT_LENGTH=16 * 1024 * 1024,
-        UPLOAD_CACHE_DIR=BASE_DIR / ".upload_cache",
-        AI_CACHE_DIR=BASE_DIR / ".ai_cache",
+        UPLOAD_CACHE_DIR=(
+            Path("/tmp/salescast_upload_cache")
+            if os.environ.get("VERCEL")
+            else BASE_DIR / ".upload_cache"
+        ),
+        AI_CACHE_DIR=(
+            Path("/tmp/salescast_ai_cache")
+            if os.environ.get("VERCEL")
+            else BASE_DIR / ".ai_cache"
+        ),
     )
+
     Path(app.config["UPLOAD_CACHE_DIR"]).mkdir(parents=True, exist_ok=True)
     Path(app.config["AI_CACHE_DIR"]).mkdir(parents=True, exist_ok=True)
 
